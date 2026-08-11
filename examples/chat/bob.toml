@@ -1,0 +1,4 @@
+broker_url = "nats://127.0.0.1:4222"
+agent_name = "bob"
+sidecar_path = "bob.jsonl"
+log_path = "bob.log"
