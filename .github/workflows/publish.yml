@@ -13,14 +13,26 @@ jobs:
       # Required for PyPI Trusted Publishing (OIDC token exchange).
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - run: |
           python -m pip install --upgrade pip build
           python -m build
+
+      # A tag that does not match chatmesh.__version__ would either publish
+      # the wrong version or burn the tag on a rejected upload. Catch it here.
+      - name: Check the tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          built=$(ls dist/*.tar.gz | sed -E 's|.*/chatmesh-(.*)\.tar\.gz|\1|')
+          echo "tag=$tag built=$built"
+          if [ "$tag" != "$built" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match built version $built"
+            exit 1
+          fi
 
       - uses: pypa/gh-action-pypi-publish@release/v1
