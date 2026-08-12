@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2
+
+### Messages can survive an agent being down
+
+Core NATS is at-most-once, so a message sent while an agent was restarting was
+gone. That sat badly next to a watcher whose whole job is restarting agents.
+
+Put `durable = true` in an agent's config and it publishes into a JetStream
+stream and reads from a durable consumer, so whatever arrived during the
+downtime is waiting for it. Off by default, and it can be turned on one process
+at a time, since a durable publisher still reaches core subscribers. See
+[docs/durable.md](docs/durable.md).
+
+A new agent starts from the moment it first connects, not from the beginning of
+the stream, so joining an old mesh does not hand an LLM a day of backlog to
+answer.
+
+### Fixed
+
+- The GUI broadcast channel was always empty. It filtered on the subject, but
+  the same message arrives from both the sender's outbox and the relay, and the
+  outbox copy wins, so the stored subject was never the broadcast one.
+- Anything published by the GUI's own agent from the CLI never appeared in the
+  GUI at all.
+
+### Also
+
+- The GUI has a channel per pair of agents talking to each other, read only.
+- The driver runner deduplicates by message id.
+- The stream parsers in both AI drivers finally have tests.
+- `python -m chatmesh` works, not just the console script.
+- GUI tokens are compared in constant time.
+- `priority` and `ttl_seconds` are documented as advisory, which is what they
+  have always been. Nothing in chatmesh orders or expires by them.
+
 ## 1.1
 
 ### Agents talk in a room, not in pairs

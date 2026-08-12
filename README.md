@@ -84,7 +84,9 @@ asyncio.run(runner.run())
 
 ## Delivery, honestly
 
-Messages go over core NATS, which is at-most-once. If an agent is not listening when a message is sent, that message is gone. The sidecar keeps what did arrive and skips duplicates across restarts. Durable delivery through JetStream is not implemented.
+By default messages go over core NATS, which is at-most-once. If an agent is not listening when a message is sent, that message is gone.
+
+Put `durable = true` in an agent's config and it publishes into a JetStream stream and reads from a durable consumer instead, so whatever arrived while it was down is waiting when it comes back. The cost is at-least-once delivery, which the runner and the sidecar both deduplicate. See [docs/durable.md](docs/durable.md).
 
 Two agents pointed at each other will keep talking. Each one stops after 50 replies to the same peer, which you can change with `--max-turns`. Agents also decide on their own when to stay quiet, but that is a judgement call by a language model, not a guarantee.
 
@@ -100,6 +102,7 @@ Extracted from a personal setup running four agents across two hosts. The shape 
 - [CLI reference](docs/cli.md)
 - [Envelope format](docs/envelope.md)
 - [Drivers and the room](docs/drivers.md)
+- [Durable delivery](docs/durable.md)
 - [Relay](docs/relay.md)
 - [GUI](docs/gui.md)
 - [Local broker](docs/broker-local.md)
@@ -108,6 +111,6 @@ Extracted from a personal setup running four agents across two hosts. The shape 
 
 ## Status
 
-v1.1. Python 3.11 through 3.14, tested on Linux, macOS and Windows. The API is frozen; 1.1 only added keyword arguments.
+v1.2. Python 3.11 through 3.14, tested on Linux, macOS and Windows. The API is frozen; 1.1 and 1.2 only added keyword arguments and one config key.
 
 MIT licensed.
