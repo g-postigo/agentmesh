@@ -2,3 +2,5 @@ broker_url = "nats://127.0.0.1:4222"
 agent_name = "user"
 sidecar_path = "user.jsonl"
 log_path = "user.log"
+# Who else is in the room. Agents also pick up names as they speak.
+peers = ["alice", "bob"]

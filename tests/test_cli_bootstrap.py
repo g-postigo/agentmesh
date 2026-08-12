@@ -32,3 +32,8 @@ def test_bootstrap_outside_repo_returns_nonzero(tmp_path: Path, monkeypatch: pyt
     monkeypatch.chdir(tmp_path)
     rc = main(["bootstrap"])
     assert rc == 1
+
+
+def test_config_template_lists_the_other_agents():
+    assert 'peers = ["bob", "user"]' in _config_template("alice")
+    assert 'peers = ["alice", "bob"]' in _config_template("user")

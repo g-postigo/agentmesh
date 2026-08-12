@@ -121,3 +121,25 @@ def test_claude_format_prompt_has_metadata():
     assert "from=alice" in p
     assert "topic=greet" in p
     assert "hi" in p
+
+
+def test_kimi_prompt_shows_the_room():
+    d = KimiDriver(agent_name="alice", allow_tools=True, peers=["bob", "user"])
+    env = Envelope.new("user", "broadcast", "deploy", "ship it?")
+    p = d.format_prompt(env)
+    assert "[broadcast from=user topic=deploy]" in p
+    assert "[room: alice (you), bob, user]" in p
+
+
+def test_claude_prompt_shows_the_room():
+    d = ClaudeDriver(agent_name="alice", peers=["bob", "user"])
+    env = Envelope.new("bob", "alice", "question", "you around?")
+    p = d.format_prompt(env)
+    assert "[direct from=bob topic=question]" in p
+    assert "[room: alice (you), bob, user]" in p
+
+
+def test_peers_reach_the_default_system_prompt():
+    d = ClaudeDriver(agent_name="alice", peers=["bob", "user"])
+    assert "bob, user" in d.system_prompt
+    assert "@skip" in d.system_prompt

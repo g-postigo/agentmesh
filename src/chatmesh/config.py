@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from chatmesh.errors import AgentmeshError
+from chatmesh.errors import ChatmeshError
 
 
-class ConfigError(AgentmeshError):
+class ConfigError(ChatmeshError):
     pass
 
 
@@ -19,6 +19,7 @@ class Config:
     log_path: Path
     ca_pin_path: Path | None = None
     nkey_seed_path: Path | None = None
+    peers: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -43,6 +44,14 @@ class Config:
                 raise ConfigError(f"{key} must be a string")
             return value
 
+        def get_names(key: str) -> list[str]:
+            value = data.get(key)
+            if value is None:
+                return []
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ConfigError(f"{key} must be a list of strings")
+            return list(value)
+
         def resolve(value: str | None) -> Path | None:
             if value is None:
                 return None
@@ -56,4 +65,5 @@ class Config:
             log_path=resolve(get("log_path")),  # type: ignore[arg-type]
             ca_pin_path=resolve(get("ca_pin_path", required=False)),
             nkey_seed_path=resolve(get("nkey_seed_path", required=False)),
+            peers=get_names("peers"),
         )

@@ -8,11 +8,17 @@ import os
 import shutil
 import time
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
 from chatmesh import __version__
-from chatmesh.drivers._chat import default_chat_prompt, materialize_kimi_chat_agent
-from chatmesh.drivers.base import Driver
+from chatmesh.drivers._chat import (
+    Room,
+    default_room_prompt,
+    materialize_kimi_chat_agent,
+    parse_reply,
+)
+from chatmesh.drivers.base import Driver, Reply
 from chatmesh.envelope import Envelope
 
 log = logging.getLogger("chatmesh.driver.kimi")
@@ -33,6 +39,7 @@ class KimiDriver(Driver):
         system_prompt: str | None = None,
         agent_file: Path | None = None,
         allow_tools: bool = False,
+        peers: Sequence[str] = (),
     ) -> None:
         self.agent_name = agent_name
         self.session = session
@@ -40,8 +47,11 @@ class KimiDriver(Driver):
         self.workdir = Path(workdir) if workdir else None
         self.extra_args = list(extra_args or [])
         self.prompt_timeout = prompt_timeout
+        self.room = Room(agent_name, peers)
         self.system_prompt = (
-            system_prompt if system_prompt is not None else default_chat_prompt(agent_name)
+            system_prompt
+            if system_prompt is not None
+            else default_room_prompt(agent_name, self.room.peers)
         )
         self.allow_tools = allow_tools
 
@@ -73,7 +83,7 @@ class KimiDriver(Driver):
         return cmd
 
     def format_prompt(self, env: Envelope) -> str:
-        return f"[msg from={env.from_} topic={env.topic}]\n{env.body}"
+        return f"{self.room.header(env)}\n{env.body}"
 
     async def start(self) -> None:
         await self._spawn()
@@ -85,7 +95,7 @@ class KimiDriver(Driver):
             with contextlib.suppress(Exception):
                 shutil.rmtree(self._agent_tmpdir)
 
-    async def handle(self, env: Envelope) -> str | None:
+    async def handle(self, env: Envelope) -> Reply | None:
         text = self.format_prompt(env)
         try:
             reply = await self._prompt(text)
@@ -99,7 +109,7 @@ class KimiDriver(Driver):
             except Exception as exc2:  # noqa: BLE001
                 log.warning("kimi prompt failed after respawn: %s", exc2)
                 return None
-        return reply or None
+        return parse_reply(reply)
 
     async def _spawn(self) -> None:
         if self.workdir is not None:

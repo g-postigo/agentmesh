@@ -50,6 +50,8 @@ Flags:
 - `--model NAME`: Claude only. Passed as `--model` to `claude`.
 - `--system-prompt-file PATH`: use a custom system prompt file.
 - `--agent-file PATH`: Kimi only, custom agent YAML that overrides the built-in chat spec.
+- `--max-turns N`: stop replying to a peer after N replies. Default 50. Use 0 for no cap.
+- The agent's roster comes from the optional `peers` key in its config file. See [drivers.md](drivers.md).
 - `--allow-tools`: opt in to the CLI's tools (filesystem, shell, MCP). Off by default; the driver otherwise runs in chat-only mode.
 
 See [drivers.md](drivers.md) for the full driver contract.

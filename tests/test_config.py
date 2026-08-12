@@ -49,3 +49,45 @@ def test_bad_toml(tmp_path: Path) -> None:
 def test_missing_file(tmp_path: Path) -> None:
     with pytest.raises(ConfigError):
         Config.load(tmp_path / "does-not-exist.toml")
+
+
+def test_peers_default_to_empty(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        """,
+    )
+    assert Config.load(cfg_path).peers == []
+
+
+def test_peers_are_read_in_order(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        peers = ["bob", "user"]
+        """,
+    )
+    assert Config.load(cfg_path).peers == ["bob", "user"]
+
+
+def test_peers_must_be_strings(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        peers = ["bob", 3]
+        """,
+    )
+    with pytest.raises(ConfigError):
+        Config.load(cfg_path)

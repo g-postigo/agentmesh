@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from chatmesh.config import Config
-from chatmesh.drivers import ClaudeDriver, DriverRunner, KimiDriver
+from chatmesh.drivers import DEFAULT_MAX_TURNS, ClaudeDriver, DriverRunner, KimiDriver
 from chatmesh.envelope import Envelope, Priority
 from chatmesh.listener import Listener
 from chatmesh.publisher import Publisher
@@ -19,6 +19,10 @@ from chatmesh.watcher import Watcher
 
 # Stable namespace for turning agent names into Claude session UUIDs.
 _CLAUDE_SESSION_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+# alice and bob are AI agents. user is you, the human, for the GUI and for
+# sending kickoff messages from the command line.
+_DEMO_MESH = ("alice", "bob", "user")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +66,15 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="kimi only: path to a custom Kimi agent YAML (overrides the built-in chat spec)",
+    )
+    p_drive.add_argument(
+        "--max-turns",
+        type=int,
+        default=DEFAULT_MAX_TURNS,
+        help=(
+            f"stop replying to a peer after this many replies (default: {DEFAULT_MAX_TURNS}). "
+            "Two drivers pointed at each other talk forever otherwise. Use 0 for no cap."
+        ),
     )
     p_drive.add_argument(
         "--allow-tools",
@@ -169,6 +182,7 @@ def _cmd_drive(cfg: Config, args: argparse.Namespace) -> int:
             system_prompt=system_prompt,
             agent_file=args.agent_file,
             allow_tools=args.allow_tools,
+            peers=cfg.peers,
         )
     else:  # claude
         # Claude requires a UUID for --session-id. Derive one deterministically
@@ -182,8 +196,9 @@ def _cmd_drive(cfg: Config, args: argparse.Namespace) -> int:
             model=args.model,
             system_prompt=system_prompt,
             allow_tools=args.allow_tools,
+            peers=cfg.peers,
         )
-    runner = DriverRunner(cfg, driver)
+    runner = DriverRunner(cfg, driver, max_turns=args.max_turns)
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(runner.run())
     return 0
@@ -212,9 +227,7 @@ def _cmd_bootstrap() -> int:
 
     mesh = Path.cwd() / "mesh"
     mesh.mkdir(exist_ok=True)
-    # alice and bob are AI agents. user is you, the human, for the GUI and
-    # for sending kickoff messages from the command line.
-    for name in ("alice", "bob", "user"):
+    for name in _DEMO_MESH:
         cfg_path = mesh / f"{name}.toml"
         if cfg_path.exists():
             print(f"kept existing {cfg_path}")
@@ -265,11 +278,14 @@ def _find_repo_root(start: Path) -> Path | None:
 
 
 def _config_template(name: str) -> str:
+    peers = ", ".join(f'"{other}"' for other in _DEMO_MESH if other != name)
     return (
         f'broker_url = "nats://127.0.0.1:4222"\n'
         f'agent_name = "{name}"\n'
         f'sidecar_path = "{name}.jsonl"\n'
         f'log_path = "{name}.log"\n'
+        f"# Who else is in the room. Agents also pick up names as they speak.\n"
+        f"peers = [{peers}]\n"
     )
 
 

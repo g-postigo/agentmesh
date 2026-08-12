@@ -7,10 +7,11 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
-from chatmesh.drivers._chat import CLAUDE_ALL_TOOLS, default_chat_prompt
-from chatmesh.drivers.base import Driver
+from chatmesh.drivers._chat import CLAUDE_ALL_TOOLS, Room, default_room_prompt, parse_reply
+from chatmesh.drivers.base import Driver, Reply
 from chatmesh.envelope import Envelope
 
 log = logging.getLogger("chatmesh.driver.claude")
@@ -31,6 +32,7 @@ class ClaudeDriver(Driver):
         system_prompt: str | None = None,
         allow_tools: bool = False,
         bare_mode: bool = False,
+        peers: Sequence[str] = (),
     ) -> None:
         self.agent_name = agent_name
         self.session_id = session_id or str(uuid.uuid4())
@@ -40,8 +42,11 @@ class ClaudeDriver(Driver):
         self.extra_args = list(extra_args or [])
         self.prompt_timeout = prompt_timeout
         self.skip_permissions = skip_permissions
+        self.room = Room(agent_name, peers)
         self.system_prompt = (
-            system_prompt if system_prompt is not None else default_chat_prompt(agent_name)
+            system_prompt
+            if system_prompt is not None
+            else default_room_prompt(agent_name, self.room.peers)
         )
         self.allow_tools = allow_tools
         self.bare_mode = bare_mode
@@ -84,9 +89,9 @@ class ClaudeDriver(Driver):
         return cmd
 
     def format_prompt(self, env: Envelope) -> str:
-        return f"[msg from={env.from_} topic={env.topic}]\n{env.body}"
+        return f"{self.room.header(env)}\n{env.body}"
 
-    async def handle(self, env: Envelope) -> str | None:
+    async def handle(self, env: Envelope) -> Reply | None:
         prompt = self.format_prompt(env)
         try:
             reply = await self._run_once(prompt)
@@ -94,7 +99,7 @@ class ClaudeDriver(Driver):
             log.warning("claude turn failed: %s", exc)
             return None
         self._first_turn = False
-        return reply or None
+        return parse_reply(reply)
 
     async def _run_once(self, prompt: str) -> str:
         cmd = self.command(first_turn=self._first_turn)

@@ -1,6 +1,6 @@
 # Drivers
 
-A driver is what turns an incoming envelope into a reply. It sees the message, does something with it, and returns text or `None`.
+A driver is what turns an incoming envelope into a reply. It sees the message, does something with it, and returns text, a `Reply`, or `None`.
 
 ## Chat mode is the default
 
@@ -8,17 +8,59 @@ Both `KimiDriver` and `ClaudeDriver` ship in **chat mode**. Without this, both C
 
 Chat mode:
 
-- Sets a short system prompt: "you are `<name>`, a chat participant, do not use tools".
+- Sets a system prompt describing the room, who else is in it, and when to speak.
 - Disables all built-in tools (Claude: `--disallowed-tools` for every shipped tool + `--bare` for hooks/LSP/plugins; Kimi: an auto-generated agent YAML with `tools: []`).
 
 Opt out with `--allow-tools` on the CLI, or `allow_tools=True` in Python. Provide your own system prompt with `--system-prompt-file PATH`. Provide your own Kimi agent spec with `--agent-file PATH`.
+
+## The room
+
+An agent is not in a two-way chat. It is in a room with the other agents and with you, and it needs to know which.
+
+Every prompt an LLM driver builds starts with two lines:
+
+    [broadcast from=user topic=deploy]
+    [room: alice (you), bob, user]
+    ship it?
+
+The first line says how the message arrived and who sent it. `broadcast` means it went to the whole room, `direct` means it came to this agent alone. The second line is the roster.
+
+The roster comes from the optional `peers` key in the agent's config, and grows as new names show up in traffic:
+
+    peers = ["bob", "user"]
+
+So adding a third agent does not mean editing everyone else's config file, though listing it up front means the agent knows about it before it ever speaks.
+
+## Where a reply goes
+
+By default a reply goes back where the message came from: the room for a broadcast, the sender for a direct message. The topic carries over, so a thread stays one thread.
+
+A driver can override that by returning a `Reply` instead of a string:
+
+    from chatmesh.drivers import Reply
+
+    return Reply("what do you think?", to="bob")     # direct message to bob
+    return Reply("heads up", to="broadcast")         # to the room
+    return Reply("off topic", topic="lunch")         # same place, new topic
+    return None                                      # say nothing
+
+The LLM drivers get there from plain text. The model is told to prefix its answer:
+
+| The model writes | Where it goes |
+|---|---|
+| `@bob: what do you think?` | direct message to bob |
+| `@all: heads up` | the room |
+| no prefix | wherever the message came from |
+| `@skip` | nowhere, the agent stays quiet |
+
+Only the first line is read as a prefix, so an `@name` in the middle of a sentence is just text. An agent that addresses itself is dropped rather than sent.
 
 ## The base class
 
     from chatmesh.drivers import Driver
 
     class MyDriver(Driver):
-        async def handle(self, env: Envelope) -> str | None:
+        async def handle(self, env: Envelope) -> str | Reply | None:
             return f"got: {env.body}"
 
 Optional lifecycle hooks: `start()` runs once before the first message, `stop()` runs on shutdown.
@@ -31,6 +73,15 @@ To wire a driver to an inbox, hand it to `DriverRunner`:
     await runner.run()
 
 The runner subscribes to `agent.inbox.<agent_name>` and `agent.broadcast.>`, drops your own echoes, calls `driver.handle`, and publishes any non-`None` reply on `agent.outbox.<agent_name>` with `reply_to` set to the original `msg_id`.
+
+## The turn cap
+
+Two drivers pointed at each other will keep talking until you stop them, and every turn costs tokens. The runner replies to any one peer at most 50 times, then goes quiet for that peer and logs a warning. Restarting the driver resets the count.
+
+    runner = DriverRunner(config, MyDriver(), max_turns=200)   # raise it
+    runner = DriverRunner(config, MyDriver(), max_turns=0)     # no cap
+
+On the CLI it is `--max-turns`. The check runs before `driver.handle`, so a capped peer does not cost an LLM call.
 
 ## KimiDriver
 
