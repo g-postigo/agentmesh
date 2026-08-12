@@ -119,6 +119,8 @@
     </ul>
     <div class="group">Direct</div>
     <ul id="dms"></ul>
+    <div class="group" id="pairs-group" hidden>Between agents</div>
+    <ul id="pairs"></ul>
   </aside>
 
   <main id="main">
@@ -163,6 +165,7 @@ const ME='__AGENT_NAME__';
 const ALL=[];
 const SEEN=new Set();
 const KNOWN_DMS=new Set();
+const KNOWN_PAIRS=new Set();
 const $=id=>document.getElementById(id);
 const feed=$('feed'), sidebar=$('sidebar'), backdrop=$('backdrop');
 const connEl=$('conn'), connT=$('conn-t');
@@ -175,12 +178,24 @@ if (AUTH) localStorage.setItem('am_token', AUTH);
 
 let currentChannel = localStorage.getItem('am_channel') || 'broadcast';
 
+// Two agents talking to each other. Sorted, so both directions land on the
+// same channel id.
+function pairKey(a, b) { return [a, b].sort().join('|'); }
+function pairParts(ch) { return ch.slice(5).split('|'); }
+
 function belongsTo(m, ch) {
   if (ch === 'all') return true;
-  if (ch === 'broadcast') return (m.subject || '').startsWith('agent.broadcast.');
+  // Keyed on the recipient, not the subject. The same message reaches us
+  // twice, once from the sender's outbox and once from the relay, and the
+  // outbox copy wins the race, so its subject is not the broadcast one.
+  if (ch === 'broadcast') return m.to === 'broadcast';
   if (ch.startsWith('dm:')) {
     const o = ch.slice(3);
     return (m.from === ME && m.to === o) || (m.from === o && m.to === ME);
+  }
+  if (ch.startsWith('pair:')) {
+    const [a, b] = pairParts(ch);
+    return (m.from === a && m.to === b) || (m.from === b && m.to === a);
   }
   return false;
 }
@@ -188,12 +203,20 @@ function chDescOf(ch) {
   if (ch === 'broadcast') return 'broadcast channel';
   if (ch === 'all') return 'observer, every message';
   if (ch.startsWith('dm:')) return 'direct chat with ' + ch.slice(3);
+  if (ch.startsWith('pair:')) return 'they are talking to each other, you are reading';
   return '';
 }
 function chNameOf(ch) {
-  return ch === 'all' ? 'all' : ch === 'broadcast' ? 'broadcast' : ch.slice(3);
+  if (ch === 'all') return 'all';
+  if (ch === 'broadcast') return 'broadcast';
+  if (ch.startsWith('pair:')) return pairParts(ch).join(' and ');
+  return ch.slice(3);
 }
-function chIconOf(ch) { return ch.startsWith('dm:') ? '@' : '#'; }
+function chIconOf(ch) {
+  if (ch.startsWith('pair:')) return '@';
+  return ch.startsWith('dm:') ? '@' : '#';
+}
+function isReadOnly(ch) { return ch.startsWith('pair:'); }
 
 function ensureDm(name) {
   if (!name || name === ME || name === 'broadcast' || name === '?' || KNOWN_DMS.has(name)) return;
@@ -206,6 +229,22 @@ function ensureDm(name) {
                + '<span class="badge">0</span>';
   li.onclick = () => setChannel(li.dataset.channel);
   ul.appendChild(li);
+}
+
+function ensurePair(from, to) {
+  if (!from || !to || from === ME || to === ME) return;
+  if (to === 'broadcast' || from === '?' || to === '?') return;
+  const key = pairKey(from, to);
+  if (KNOWN_PAIRS.has(key)) return;
+  KNOWN_PAIRS.add(key);
+  $('pairs-group').hidden = false;
+  const li = document.createElement('li');
+  li.dataset.channel = 'pair:' + key;
+  li.innerHTML = '<span class="hash">@</span>'
+               + '<span class="name">' + key.split('|').join(' and ') + '</span>'
+               + '<span class="badge">0</span>';
+  li.onclick = () => setChannel(li.dataset.channel);
+  $('pairs').appendChild(li);
 }
 
 function makeMsg(m) {
@@ -298,7 +337,8 @@ function renderFeed() {
 }
 function markUnread(m) {
   const dmChannels = Array.from(KNOWN_DMS).map(n => 'dm:' + n);
-  ['broadcast', ...dmChannels].forEach(ch => {
+  const pairChannels = Array.from(KNOWN_PAIRS).map(k => 'pair:' + k);
+  ['broadcast', ...dmChannels, ...pairChannels].forEach(ch => {
     if (ch === currentChannel) return;
     if (belongsTo(m, ch)) {
       const li = document.querySelector('#sidebar li[data-channel="' + ch + '"]');
@@ -323,7 +363,13 @@ function setChannel(ch) {
   chName.textContent = chNameOf(ch);
   chDesc.textContent = chDescOf(ch);
   chIcon.textContent = chIconOf(ch);
-  bodyIn.placeholder = ch === 'broadcast' ? 'broadcast to everyone'
+  // You cannot send into a conversation between two other agents.
+  const readOnly = isReadOnly(ch);
+  bodyIn.disabled = readOnly;
+  prio.disabled = readOnly;
+  sendBtn.disabled = readOnly;
+  bodyIn.placeholder = readOnly ? 'read only, this is their conversation'
+                     : ch === 'broadcast' ? 'broadcast to everyone'
                      : ch === 'all' ? 'observer, send goes as broadcast'
                      : 'private message to @' + ch.slice(3);
   closeDrawer();
@@ -338,6 +384,7 @@ function onMsg(m) {
   if (ALL.length > 2000) ALL.shift();
   if (m.from && m.from !== ME) ensureDm(m.from);
   if (m.to && m.to !== ME && m.to !== 'broadcast') ensureDm(m.to);
+  ensurePair(m.from, m.to);
   if (belongsTo(m, currentChannel)) {
     feed.appendChild(makeMsg(m));
     feed.scrollTop = feed.scrollHeight;
@@ -353,6 +400,7 @@ document.querySelectorAll('#sidebar li').forEach(li => {
 });
 
 async function send() {
+  if (isReadOnly(currentChannel)) return;
   const body = bodyIn.value.trim();
   if (!body) return;
   const to = (currentChannel === 'broadcast' || currentChannel === 'all')

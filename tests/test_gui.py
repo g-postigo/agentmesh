@@ -30,6 +30,17 @@ def test_index_serves_html():
     assert "alice" in r.text
 
 
+def test_index_ships_the_between_agents_channel():
+    """The page is one file with the JS inline, so a broken merge here is
+    silent. Pin the pieces the agent-to-agent view needs."""
+    page = TestClient(build_app(_cfg())).get("/").text
+    assert 'id="pairs"' in page
+    assert "Between agents" in page
+    assert "function ensurePair" in page
+    # The broadcast channel filters on the recipient, not on the subject.
+    assert "m.to === 'broadcast'" in page
+
+
 def test_index_has_csp_headers():
     app = build_app(_cfg())
     client = TestClient(app)

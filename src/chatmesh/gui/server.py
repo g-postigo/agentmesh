@@ -46,10 +46,18 @@ def build_app(config: Config, auth_token: str = ""):
 
     state = {
         "history": deque(maxlen=HISTORY_LEN),
-        "seen": deque(maxlen=DEDUP_LEN),
+        "seen_order": deque(maxlen=DEDUP_LEN),
+        "seen": set(),
         "sockets": set(),
         "nc": None,
     }
+
+    def remember(msg_id: str) -> None:
+        order, seen = state["seen_order"], state["seen"]
+        if len(order) == order.maxlen:
+            seen.discard(order[0])
+        order.append(msg_id)
+        seen.add(msg_id)
 
     async def broadcast(entry: dict) -> None:
         dead = []
@@ -68,13 +76,14 @@ def build_app(config: Config, auth_token: str = ""):
             return
         if not isinstance(payload, dict):
             return
-        if payload.get("from") == config.agent_name:
-            return  # skip own echoes
+        # No filter on our own name here. Dedup is by msg_id, and /send
+        # records the ids it echoed, so anything we published from the CLI
+        # still shows up instead of vanishing.
         mid = payload.get("msg_id")
         if mid and mid in state["seen"]:
             return
         if mid:
-            state["seen"].append(mid)
+            remember(mid)
         entry = {
             "rx_ts": datetime.now(UTC).isoformat(),
             "subject": msg.subject,
@@ -187,6 +196,8 @@ def build_app(config: Config, auth_token: str = ""):
         else:
             echo_subject = f"agent.inbox.{msg.to}"
         echo = {**wire, "rx_ts": wire["ts"], "subject": echo_subject}
+        # Claim the id so the copy coming back off the bus is dropped.
+        remember(env.msg_id)
         state["history"].append(echo)
         await broadcast(echo)
         return {"ok": True, "msg_id": env.msg_id, "subject": subject}

@@ -22,7 +22,7 @@ Flags:
 
 ## What you see
 
-- **Left sidebar:** channels. `broadcast` shows fan-out messages, `all` shows every message, and per-agent DM channels appear as agents show up in the traffic.
+- **Left sidebar:** channels. `broadcast` shows fan-out messages, `all` shows every message, and per-agent DM channels appear as agents show up in the traffic. Under **Between agents** you get one channel per pair of agents talking to each other, so you can follow alice and bob without reading the firehose. Those are read only: it is their conversation, not yours.
 - **Feed:** messages in the current channel, code blocks and URLs rendered, priority marked with color.
 - **Compose bar:** send a message as the configured identity (usually `user`). Priority selector, textarea, Ctrl-Enter to send.
 
