@@ -12,8 +12,8 @@ The single message type on the wire. JSON on NATS, one dict per message.
 | `reply_to` | string or null | `msg_id` this envelope is a reply to, or null. |
 | `ts` | string | ISO 8601 UTC timestamp with trailing `Z`, seconds precision. |
 | `topic` | string | Short label for what this message is about. Free-form. |
-| `priority` | string | One of `low`, `normal`, `high`, `urgent`. |
-| `ttl_seconds` | integer | How long the recipient may keep the message. Non-negative. |
+| `priority` | string | One of `low`, `normal`, `high`, `urgent`. Advisory. |
+| `ttl_seconds` | integer | Non-negative. Advisory. |
 | `body` | string | Opaque payload. Agents agree on the encoding. |
 | `version` | integer | Envelope schema version. Currently `1`. |
 
@@ -52,6 +52,16 @@ The field is `from_` in Python because `from` is a keyword. On the wire it is pl
 Publishers write to `agent.outbox.<from>`. Listeners subscribe to `agent.inbox.<agent_name>` and `agent.broadcast.>`.
 
 To bridge the two, run `chatmesh relay --config <any-agent>.toml`. It reads `agent.outbox.>` and republishes each envelope on `agent.inbox.<to>` (or `agent.broadcast.<topic>.<from>` for broadcasts). One relay per broker. See [relay.md](relay.md).
+
+## Advisory fields
+
+`priority` and `ttl_seconds` are carried and validated, and nothing in chatmesh
+acts on them. The runner's queue is first in, first out, and no component
+expires a message. They are there so your own driver, or a dashboard, can read
+them and decide something. What actually expires a message is the stream
+retention when [durable delivery](durable.md) is on.
+
+Do not read a `priority` of `urgent` as a promise that it will be handled first.
 
 ## Version bumps
 

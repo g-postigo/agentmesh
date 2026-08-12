@@ -91,3 +91,25 @@ def test_manifest_serves():
     r = client.get("/manifest.webmanifest")
     assert r.status_code == 200
     assert r.json()["name"] == "chatmesh"
+
+
+def test_ws_rejects_a_wrong_token():
+    from starlette.websockets import WebSocketDisconnect
+
+    app = build_app(_cfg(), auth_token="s3cret")
+    client = TestClient(app)
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws?token=wrong"):
+        pass
+
+
+def test_send_accepts_the_right_bearer():
+    app = build_app(_cfg(), auth_token="s3cret")
+    client = TestClient(app)
+    r = client.post(
+        "/send",
+        json={"to": "bob", "body": "hi"},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    # No broker in this test, but it got past the auth check.
+    assert r.status_code == 200
+    assert r.json() == {"ok": False, "error": "broker not connected"}

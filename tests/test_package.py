@@ -19,3 +19,18 @@ def test_old_error_name_still_works():
 def test_py_typed_ships():
     marker = Path(chatmesh.__file__).parent / "py.typed"
     assert marker.exists(), "py.typed is missing, type checkers will ignore the package"
+
+
+def test_runnable_as_a_module():
+    """`python -m chatmesh` should work, not just the console script."""
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-m", "chatmesh", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode == 0, out.stderr
+    assert "bootstrap" in out.stdout

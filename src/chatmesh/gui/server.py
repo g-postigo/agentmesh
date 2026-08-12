@@ -11,6 +11,7 @@ Optional dependency: install with `pip install chatmesh[gui]`.
 import asyncio
 import contextlib
 import json
+import secrets
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -132,7 +133,9 @@ def build_app(config: Config, auth_token: str = ""):
             return True
         if not value:
             return False
-        return value.strip() == f"Bearer {auth_token}"
+        # Constant time, so the comparison does not leak the token a
+        # character at a time.
+        return secrets.compare_digest(value.strip(), f"Bearer {auth_token}")
 
     class SendPayload(BaseModel):
         to: str
@@ -204,7 +207,7 @@ def build_app(config: Config, auth_token: str = ""):
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket, token: str | None = Query(default=None)) -> None:
-        if auth_token and token != auth_token:
+        if auth_token and not secrets.compare_digest(token or "", auth_token):
             await ws.close(code=4401)
             return
         await ws.accept()
