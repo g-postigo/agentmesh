@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 
 from chatmesh import Envelope
 from chatmesh.config import Config
-from chatmesh.relay import Relay
+from chatmesh.relay import QUEUE_GROUP, Relay
 
 
 class _FakeNats:
@@ -52,3 +54,28 @@ async def test_forward_ignores_bad_envelope():
     r._nc = _FakeNats()  # type: ignore[assignment]
     await r._forward(_Msg(b"not json"))
     assert r._nc.published == []  # type: ignore[attr-defined]
+
+
+async def test_run_subscribes_in_a_queue_group(monkeypatch):
+    """Without the queue group, a second relay duplicates every message."""
+    subs: list[tuple[str, dict]] = []
+
+    class _SubRecordingNats(_FakeNats):
+        async def subscribe(self, subject: str, **kwargs) -> None:
+            subs.append((subject, kwargs))
+
+        async def drain(self) -> None:
+            return None
+
+    async def _fake_connect(config: Config) -> _SubRecordingNats:
+        return _SubRecordingNats()
+
+    monkeypatch.setattr("chatmesh.relay._connect", _fake_connect)
+
+    r = Relay(_cfg())
+    # run() blocks forever by design; let it get past subscribe, then cancel.
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(r.run(), timeout=0.2)
+
+    assert [s for s, _ in subs] == ["agent.outbox.>"]
+    assert subs[0][1]["queue"] == QUEUE_GROUP

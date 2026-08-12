@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
@@ -55,15 +56,32 @@ class Sidecar:
 
 
 def _tail_envelopes(path: Path, n: int) -> list[Envelope]:
-    with path.open("rb") as f:
-        lines = f.readlines()
     out: list[Envelope] = []
-    for line in lines[-n:]:
-        line = line.strip()
-        if not line:
-            continue
+    for line in _tail_lines(path, n):
         try:
             out.append(Envelope.from_json(line))
         except EnvelopeError:
             continue
     return out
+
+
+def _tail_lines(path: Path, n: int, chunk: int = 64 * 1024) -> list[bytes]:
+    """Last `n` non-empty lines, read backwards from the end of the file.
+
+    A sidecar is append-only and can grow for weeks, so reading the whole
+    thing just to warm the dedup window is not an option.
+    """
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        buf = b""
+        while pos > 0 and buf.count(b"\n") <= n:
+            step = min(chunk, pos)
+            pos -= step
+            f.seek(pos)
+            buf = f.read(step) + buf
+    lines = buf.split(b"\n")
+    if pos > 0:
+        # We started mid-file, so the first line is probably a fragment.
+        lines = lines[1:]
+    return [stripped for line in lines if (stripped := line.strip())][-n:]

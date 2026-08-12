@@ -61,6 +61,19 @@ def test_send_reports_broker_disconnected_when_no_broker():
     assert r.json() == {"ok": False, "error": "broker not connected"}
 
 
+def test_startup_and_shutdown_are_clean():
+    """Entering the context manager runs the lifespan; leaving it used to
+    raise, because CancelledError is not an Exception."""
+    with TestClient(build_app(_cfg())) as client:
+        assert client.get("/history").status_code == 200
+
+
+def test_send_rejects_an_unknown_priority():
+    with TestClient(build_app(_cfg())) as client:
+        r = client.post("/send", json={"to": "bob", "body": "hi", "priority": "bogus"})
+    assert r.status_code == 400
+
+
 def test_manifest_serves():
     app = build_app(_cfg())
     client = TestClient(app)

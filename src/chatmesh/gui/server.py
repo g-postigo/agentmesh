@@ -11,13 +11,14 @@ Optional dependency: install with `pip install chatmesh[gui]`.
 import asyncio
 import contextlib
 import json
-import uuid
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from importlib import resources
 
 from chatmesh.config import Config
+from chatmesh.envelope import Envelope
+from chatmesh.errors import EnvelopeError
 
 HISTORY_LEN = 500
 DEDUP_LEN = 1000
@@ -110,7 +111,9 @@ def build_app(config: Config, auth_token: str = ""):
         task = asyncio.create_task(nats_worker())
         yield
         task.cancel()
-        with contextlib.suppress(Exception):
+        # CancelledError is a BaseException, so suppress(Exception) lets it
+        # through and shutdown raises.
+        with contextlib.suppress(asyncio.CancelledError):
             await task
 
     app = FastAPI(lifespan=lifespan)
@@ -153,23 +156,28 @@ def build_app(config: Config, auth_token: str = ""):
     async def send(msg: SendPayload, authorization: str | None = Header(default=None)) -> dict:
         if not _check_bearer(authorization):
             raise HTTPException(status_code=401, detail="unauthorized")
+        # Validate before looking at the broker, so a malformed request gets
+        # the same 400 whether or not we happen to be connected.
+        try:
+            env = Envelope.new(
+                from_=config.agent_name,
+                to=msg.to,
+                topic=msg.topic,
+                body=msg.body,
+                priority=msg.priority,  # type: ignore[arg-type]
+                reply_to=msg.reply_to,
+            )
+        except EnvelopeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         nc = state["nc"]
         if nc is None or not nc.is_connected:
             return {"ok": False, "error": "broker not connected"}
-        env = {
-            "msg_id": str(uuid.uuid4()),
-            "from": config.agent_name,
-            "to": msg.to,
-            "reply_to": msg.reply_to,
-            "ts": datetime.now(UTC).isoformat(),
-            "topic": msg.topic,
-            "priority": msg.priority,
-            "ttl_seconds": 3600,
-            "body": msg.body,
-            "version": 1,
-        }
         subject = f"agent.outbox.{config.agent_name}"
-        await nc.publish(subject, json.dumps(env).encode())
+        payload = env.to_json()
+        await nc.publish(subject, payload)
+        # Round-trip so the echo carries exactly the fields that went out,
+        # including `from` rather than the dataclass `from_`.
+        wire = json.loads(payload)
         # Echo to sockets so the sender sees their own message immediately.
         # Use the subject the relay will forward it to, so channel filters
         # in the UI (broadcast, DM) match. If no relay is running, this
@@ -178,10 +186,10 @@ def build_app(config: Config, auth_token: str = ""):
             echo_subject = f"agent.broadcast.{msg.topic}.{config.agent_name}"
         else:
             echo_subject = f"agent.inbox.{msg.to}"
-        echo = {**env, "rx_ts": env["ts"], "subject": echo_subject}
+        echo = {**wire, "rx_ts": wire["ts"], "subject": echo_subject}
         state["history"].append(echo)
         await broadcast(echo)
-        return {"ok": True, "msg_id": env["msg_id"], "subject": subject}
+        return {"ok": True, "msg_id": env.msg_id, "subject": subject}
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket, token: str | None = Query(default=None)) -> None:

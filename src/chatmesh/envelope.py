@@ -11,6 +11,9 @@ from chatmesh.errors import EnvelopeError
 Priority = Literal["low", "normal", "high", "urgent"]
 _PRIORITIES: frozenset[str] = frozenset(("low", "normal", "high", "urgent"))
 
+# `to` value that means "everyone", as opposed to a single agent name.
+BROADCAST = "broadcast"
+
 
 @dataclass(slots=True)
 class Envelope:
