@@ -91,3 +91,45 @@ def test_peers_must_be_strings(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError):
         Config.load(cfg_path)
+
+
+def test_durable_defaults_to_off(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        """,
+    )
+    assert Config.load(cfg_path).durable is False
+
+
+def test_durable_reads_a_boolean(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        durable = true
+        """,
+    )
+    assert Config.load(cfg_path).durable is True
+
+
+def test_durable_rejects_a_string(tmp_path: Path) -> None:
+    cfg_path = _write(
+        tmp_path / "cfg.toml",
+        """
+        broker_url = "nats://127.0.0.1:4222"
+        agent_name = "alice"
+        sidecar_path = "inbox.jsonl"
+        log_path = "agent.log"
+        durable = "yes"
+        """,
+    )
+    with pytest.raises(ConfigError):
+        Config.load(cfg_path)

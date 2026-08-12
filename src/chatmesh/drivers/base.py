@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from abc import ABC, abstractmethod
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from nats.aio.msg import Msg
 
 from chatmesh.config import Config
+from chatmesh.durable import consumer_name, ensure_stream
+from chatmesh.durable import subscribe as durable_subscribe
 from chatmesh.envelope import BROADCAST, Envelope
 from chatmesh.errors import EnvelopeError
 from chatmesh.publisher import Publisher, _connect
@@ -21,6 +25,9 @@ EnvelopeFilter = Callable[[Envelope], bool]
 # every turn costs tokens. Cap how many replies we send to any one peer.
 # Pass max_turns=0 to lift the cap.
 DEFAULT_MAX_TURNS = 50
+
+# How many recent message ids to remember when spotting a redelivery.
+DEDUP_SIZE = 500
 
 
 @dataclass(slots=True)
@@ -66,6 +73,10 @@ class DriverRunner:
         self._queue: asyncio.Queue[Envelope] = asyncio.Queue()
         self._replies: dict[str, int] = {}
         self._silenced: set[str] = set()
+        # Durable delivery is at-least-once, so the same message can arrive
+        # twice. Answering it twice would be worse than the redelivery.
+        self._seen_order: deque[str] = deque(maxlen=DEDUP_SIZE)
+        self._seen: set[str] = set()
 
     async def run(self) -> None:
         await self._driver.start()
@@ -74,8 +85,24 @@ class DriverRunner:
         nc = await _connect(self._config)
         try:
             name = self._config.agent_name
-            await nc.subscribe(f"agent.inbox.{name}", cb=self._on_msg)
-            await nc.subscribe("agent.broadcast.>", cb=self._on_msg)
+            if self._config.durable:
+                js = nc.jetstream()
+                await ensure_stream(js)
+                await durable_subscribe(
+                    js,
+                    f"agent.inbox.{name}",
+                    durable=consumer_name("driver-inbox", name),
+                    cb=self._on_durable_msg,
+                )
+                await durable_subscribe(
+                    js,
+                    "agent.broadcast.>",
+                    durable=consumer_name("driver-broadcast", name),
+                    cb=self._on_durable_msg,
+                )
+            else:
+                await nc.subscribe(f"agent.inbox.{name}", cb=self._on_msg)
+                await nc.subscribe("agent.broadcast.>", cb=self._on_msg)
 
             worker = asyncio.create_task(self._worker(pub))
             try:
@@ -89,15 +116,41 @@ class DriverRunner:
             await self._driver.stop()
 
     async def _on_msg(self, msg: Msg) -> None:
+        env = self._read(msg)
+        if env is not None:
+            await self._queue.put(env)
+
+    async def _on_durable_msg(self, msg: Msg) -> None:
+        env = self._read(msg)
+        # Ack whatever we are not going to answer, or the consumer redelivers
+        # it forever. Ack what we take too: the reply is an LLM turn that can
+        # run for minutes, and holding the ack open that long invites a
+        # redelivery on top of the turn already in flight.
+        with contextlib.suppress(Exception):
+            await msg.ack()
+        if env is not None:
+            await self._queue.put(env)
+
+    def _read(self, msg: Msg) -> Envelope | None:
+        """Parse and filter, or None if this message is not ours to answer."""
         try:
             env = Envelope.from_json(msg.data)
         except EnvelopeError:
-            return
+            return None
         if env.from_ == self._config.agent_name:
-            return  # own echo
+            return None  # own echo
+        if env.msg_id in self._seen:
+            return None  # redelivered
+        self._remember(env.msg_id)
         if not self._accept(env):
-            return
-        await self._queue.put(env)
+            return None
+        return env
+
+    def _remember(self, msg_id: str) -> None:
+        if len(self._seen_order) == self._seen_order.maxlen:
+            self._seen.discard(self._seen_order[0])
+        self._seen_order.append(msg_id)
+        self._seen.add(msg_id)
 
     async def _worker(self, pub: Publisher) -> None:
         while True:

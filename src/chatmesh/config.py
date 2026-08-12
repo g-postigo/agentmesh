@@ -20,6 +20,7 @@ class Config:
     ca_pin_path: Path | None = None
     nkey_seed_path: Path | None = None
     peers: list[str] = field(default_factory=list)
+    durable: bool = False
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -52,6 +53,14 @@ class Config:
                 raise ConfigError(f"{key} must be a list of strings")
             return list(value)
 
+        def get_flag(key: str) -> bool:
+            value = data.get(key)
+            if value is None:
+                return False
+            if not isinstance(value, bool):
+                raise ConfigError(f"{key} must be true or false")
+            return value
+
         def resolve(value: str | None) -> Path | None:
             if value is None:
                 return None
@@ -66,4 +75,5 @@ class Config:
             ca_pin_path=resolve(get("ca_pin_path", required=False)),
             nkey_seed_path=resolve(get("nkey_seed_path", required=False)),
             peers=get_names("peers"),
+            durable=get_flag("durable"),
         )
