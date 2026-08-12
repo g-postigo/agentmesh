@@ -4,21 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatmesh"
-version = "1.0"
-description = "Connect long-running agents over NATS JetStream."
+dynamic = ["version"]
+description = "Connect long-running agents over NATS."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
     { name = "Postigo", email = "guilhermepostigo@hotmail.com" },
 ]
-keywords = ["nats", "agents", "messaging", "jetstream"]
+keywords = ["nats", "agents", "messaging"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
 ]
 dependencies = [
     "nats-py>=2.7",
@@ -47,11 +49,15 @@ chatmesh = "chatmesh.cli:main"
 Homepage = "https://github.com/g-postigo/chatmesh"
 Issues = "https://github.com/g-postigo/chatmesh/issues"
 
+[tool.hatch.version]
+path = "src/chatmesh/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatmesh"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/chatmesh/gui/index.html" = "chatmesh/gui/index.html"
+"src/chatmesh/py.typed" = "chatmesh/py.typed"
 
 [tool.ruff]
 line-length = 100
