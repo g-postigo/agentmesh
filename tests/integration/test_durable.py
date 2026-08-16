@@ -68,48 +68,52 @@ async def _publish(cfg: Config, env: Envelope) -> None:
     await pub.close()
 
 
-async def test_listener_gets_what_arrived_while_it_was_down(tmp_path: Path):
-    name = _unique("bob")
-    cfg = _cfg(tmp_path, name)
-    sender = _cfg(tmp_path, _unique("user"))
+async def _missed_messages(tmp_path: Path, *, durable: bool) -> list[str]:
+    """Send three messages to an agent that is down, then bring it back.
 
-    # First run: this is what creates the durable consumer.
-    sidecar = Sidecar(cfg.sidecar_path)
+    A relay has to be up throughout: publishers write to
+    `agent.outbox.<from>` and listeners read `agent.inbox.<name>`, so
+    without one nothing connects the two and the result would be empty
+    whatever the delivery guarantees are.
+    """
     from chatmesh.listener import Listener
 
-    await _run_briefly(Listener(cfg, sidecar).run(), 1.2)
+    name = _unique("bob")
+    cfg = _cfg(tmp_path, name, durable=durable)
+    sender = _cfg(tmp_path, _unique("user"), durable=durable)
+    relay = asyncio.create_task(Relay(_cfg(tmp_path, _unique("relay"), durable=durable)).run())
+    try:
+        await asyncio.sleep(0.5)
+        # First run is what creates the durable consumer.
+        await _run_briefly(Listener(cfg, Sidecar(cfg.sidecar_path)).run(), 1.2)
 
-    # Down. Three messages land on its inbox anyway.
-    for i in range(3):
-        await _publish(sender, Envelope.new(sender.agent_name, name, "work", f"missed {i}"))
-    await asyncio.sleep(0.3)
+        # Down. Three messages are sent to it anyway.
+        for i in range(3):
+            await _publish(sender, Envelope.new(sender.agent_name, name, "work", f"missed {i}"))
+        await asyncio.sleep(0.6)
+        assert not cfg.sidecar_path.exists() or cfg.sidecar_path.read_text() == ""
 
-    assert not cfg.sidecar_path.exists() or cfg.sidecar_path.read_text() == ""
+        # Back up.
+        await _run_briefly(Listener(cfg, Sidecar(cfg.sidecar_path)).run(), 2.5)
+    finally:
+        relay.cancel()
+        await asyncio.gather(relay, return_exceptions=True)
 
-    # Back up. The stream still has them.
-    await _run_briefly(Listener(cfg, Sidecar(cfg.sidecar_path)).run(), 2.0)
+    # Filter to our own sender: the stream carries `agent.>`, so on a shared
+    # broker other traffic reaches the broadcast subscription too.
+    return [e.body for e in Sidecar(cfg.sidecar_path).read_new() if e.from_ == sender.agent_name]
 
-    # Filter to our own sender: the stream carries `agent.>`, so a shared
-    # broker means other traffic reaches the broadcast subscription too.
-    bodies = [e.body for e in Sidecar(cfg.sidecar_path).read_new() if e.from_ == sender.agent_name]
-    assert bodies == ["missed 0", "missed 1", "missed 2"], bodies
+
+async def test_listener_gets_what_arrived_while_it_was_down(tmp_path: Path):
+    assert await _missed_messages(tmp_path, durable=True) == ["missed 0", "missed 1", "missed 2"]
 
 
 async def test_core_nats_loses_the_same_messages(tmp_path: Path):
-    """The control case, so the test above is measuring something."""
-    name = _unique("bob")
-    cfg = _cfg(tmp_path, name, durable=False)
-    sender = _cfg(tmp_path, _unique("user"), durable=False)
+    """The control case, so the test above is measuring something.
 
-    from chatmesh.listener import Listener
-
-    await _run_briefly(Listener(cfg, Sidecar(cfg.sidecar_path)).run(), 1.0)
-    for i in range(3):
-        await _publish(sender, Envelope.new(sender.agent_name, name, "work", f"missed {i}"))
-    await asyncio.sleep(0.3)
-    await _run_briefly(Listener(cfg, Sidecar(cfg.sidecar_path)).run(), 1.0)
-
-    assert list(Sidecar(cfg.sidecar_path).read_new()) == []
+    Same relay, same timing, same everything except the flag.
+    """
+    assert await _missed_messages(tmp_path, durable=False) == []
 
 
 class _Echo(Driver):

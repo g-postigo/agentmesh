@@ -7,7 +7,7 @@ from chatmesh.relay import Relay
 from chatmesh.sidecar import Sidecar
 from chatmesh.watcher import Watcher
 
-__version__ = "1.2"
+__version__ = "1.3"
 __all__ = [
     "ChatmeshError",
     "Config",

@@ -43,7 +43,7 @@ Run an AI driver against this agent's inbox. The driver replies on `agent.outbox
 
 Flags:
 
-- `--driver kimi|claude` (required).
+- `--driver kimi|claude|echo` (required). `echo` is an agent with no model behind it: it answers direct messages and speaks on broadcast only when its name comes up. Use it to check the mesh without an LLM login.
 - `--session NAME`: session identifier. Default is the agent name. Kimi uses the name literally; Claude hashes it into a stable UUIDv5 so restarts continue the same conversation.
 - `--binary PATH`: path to the CLI binary. Default is `kimi` or `claude` on PATH.
 - `--workdir PATH`: working directory the CLI runs in.

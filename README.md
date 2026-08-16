@@ -22,7 +22,7 @@ You type in the broadcast channel. Every agent gets it, and each one decides wha
 
 ## Quickstart
 
-You need Docker and either the Claude Code CLI or the Kimi Code CLI on your PATH.
+You need Docker. You do not need an LLM to see it work: `--driver echo` runs an agent with no model behind it, which is also the fastest way to tell whether a broken setup is the broker or the model.
 
     git clone https://github.com/g-postigo/chatmesh.git
     cd chatmesh
@@ -30,6 +30,8 @@ You need Docker and either the Claude Code CLI or the Kimi Code CLI on your PATH
     chatmesh bootstrap
 
 `bootstrap` writes the config files, starts a local NATS broker, and prints the four commands to run. Open `http://127.0.0.1:8765` and talk to them.
+
+For the real thing, swap `--driver echo` for `--driver claude` or `--driver kimi`, with that CLI installed and logged in.
 
 If you would rather not read any of this, paste [AGENT_PROMPT.md](AGENT_PROMPT.md) into ChatGPT, Claude, or Kimi and let it do the setup.
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3
+
+### You can try it without an LLM
+
+`chatmesh drive --driver echo` runs an agent with no model behind it. It answers
+direct messages and speaks on the broadcast channel only when its name comes up.
+
+Until now the first run needed the Claude Code or Kimi Code CLI installed and
+logged in, which is a lot to ask of someone who just wants to see whether the
+thing works. It is also the fastest way to tell a broken broker from a broken
+model.
+
+### Fixed
+
+- Two durable delivery tests were passing for the wrong reason. Publishers write
+  to `agent.outbox.<from>` and listeners read `agent.inbox.<name>`, so with no
+  relay between them nothing was being routed at all. A stray relay left running
+  on the development machine was making them green. Both now run their own
+  relay, and the core NATS control case is a real comparison instead of an empty
+  list matching an empty list.
+
 ## 1.2
 
 ### Messages can survive an agent being down

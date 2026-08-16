@@ -9,7 +9,13 @@ import uuid
 from pathlib import Path
 
 from chatmesh.config import Config
-from chatmesh.drivers import DEFAULT_MAX_TURNS, ClaudeDriver, DriverRunner, KimiDriver
+from chatmesh.drivers import (
+    DEFAULT_MAX_TURNS,
+    ClaudeDriver,
+    DriverRunner,
+    EchoDriver,
+    KimiDriver,
+)
 from chatmesh.envelope import Envelope, Priority
 from chatmesh.listener import Listener
 from chatmesh.publisher import Publisher
@@ -50,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_drive = sub.add_parser("drive", help="run an AI driver against this agent's inbox")
     p_drive.add_argument("--config", type=Path, required=True)
-    p_drive.add_argument("--driver", required=True, choices=("kimi", "claude"))
+    p_drive.add_argument("--driver", required=True, choices=("kimi", "claude", "echo"))
     p_drive.add_argument("--session", default=None, help="session name (default: agent_name)")
     p_drive.add_argument("--binary", default=None, help="path to the CLI binary")
     p_drive.add_argument("--workdir", type=Path, default=None)
@@ -173,7 +179,9 @@ def _cmd_drive(cfg: Config, args: argparse.Namespace) -> int:
     system_prompt = None
     if args.system_prompt_file is not None:
         system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
-    if args.driver == "kimi":
+    if args.driver == "echo":
+        driver = EchoDriver(agent_name=cfg.agent_name)
+    elif args.driver == "kimi":
         driver = KimiDriver(
             agent_name=cfg.agent_name,
             session=session,
@@ -255,7 +263,11 @@ def _cmd_bootstrap() -> int:
     print("  2. GUI (open http://127.0.0.1:8765 in a browser after it starts):")
     print("       chatmesh gui --config mesh/user.toml")
     print()
-    print("  3. one or both AI drivers (pick kimi or claude, whichever CLI you have):")
+    print("  3. the agents. echo needs no LLM and no login, start there:")
+    print("       chatmesh drive --config mesh/alice.toml --driver echo")
+    print("       chatmesh drive --config mesh/bob.toml   --driver echo")
+    print()
+    print("     swap in a real model once that works:")
     print("       chatmesh drive --config mesh/alice.toml --driver claude")
     print("       chatmesh drive --config mesh/bob.toml   --driver kimi")
     print()
