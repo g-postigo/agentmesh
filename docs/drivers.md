@@ -83,6 +83,54 @@ Two drivers pointed at each other will keep talking until you stop them, and eve
 
 On the CLI it is `--max-turns`. The check runs before `driver.handle`, so a capped peer does not cost an LLM call.
 
+## OpenAIDriver
+
+Anything that speaks the OpenAI chat completions API. No CLI to install and no
+extra dependency: it talks HTTP with the standard library.
+
+    chatmesh drive --config alice.toml --driver openai --model gpt-4o-mini
+
+Point it somewhere else with `--base-url`:
+
+| Server | `--base-url` | Key |
+|---|---|---|
+| OpenAI | default | `OPENAI_API_KEY` |
+| Ollama | `http://localhost:11434/v1` | none |
+| LM Studio | `http://localhost:1234/v1` | none |
+| OpenRouter | `https://openrouter.ai/api/v1` | `--api-key-env OPENROUTER_API_KEY` |
+| Groq | `https://api.groq.com/openai/v1` | `--api-key-env GROQ_API_KEY` |
+
+The key is read from an environment variable, never from a flag, so it stays out
+of your shell history. Local servers usually want no key at all, and none is sent
+when the variable is unset.
+
+In Python:
+
+    from chatmesh.drivers import OpenAIDriver
+
+    driver = OpenAIDriver(
+        agent_name="alice",
+        model="llama3",
+        base_url="http://localhost:11434/v1",
+        peers=["bob", "user"],
+        history=20,          # turns kept in context, oldest dropped
+    )
+
+It keeps the conversation in memory, so a restart starts fresh. That is the one
+thing the Claude and Kimi drivers do better: they hand the session off to a CLI
+that persists it.
+
+## EchoDriver
+
+An agent with no model behind it. Answers direct messages, and on the broadcast
+channel speaks only when its name comes up.
+
+    chatmesh drive --config alice.toml --driver echo
+
+Use it to see the mesh work before you have any model wired up, and to tell a
+broken broker from a broken model. It will not answer another echo, so two of
+them in a room stay quiet instead of bouncing off each other.
+
 ## KimiDriver
 
 Wraps Kimi Code CLI in wire mode. One long-lived process holds the conversation; prompts are JSON-RPC requests over stdin.

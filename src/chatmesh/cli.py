@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import subprocess
 import sys
 import uuid
@@ -15,7 +16,9 @@ from chatmesh.drivers import (
     DriverRunner,
     EchoDriver,
     KimiDriver,
+    OpenAIDriver,
 )
+from chatmesh.drivers.openai import DEFAULT_BASE_URL, DEFAULT_MODEL
 from chatmesh.envelope import Envelope, Priority
 from chatmesh.listener import Listener
 from chatmesh.publisher import Publisher
@@ -56,11 +59,25 @@ def main(argv: list[str] | None = None) -> int:
 
     p_drive = sub.add_parser("drive", help="run an AI driver against this agent's inbox")
     p_drive.add_argument("--config", type=Path, required=True)
-    p_drive.add_argument("--driver", required=True, choices=("kimi", "claude", "echo"))
+    p_drive.add_argument("--driver", required=True, choices=("kimi", "claude", "echo", "openai"))
     p_drive.add_argument("--session", default=None, help="session name (default: agent_name)")
     p_drive.add_argument("--binary", default=None, help="path to the CLI binary")
     p_drive.add_argument("--workdir", type=Path, default=None)
-    p_drive.add_argument("--model", default=None, help="model name (claude only)")
+    p_drive.add_argument("--model", default=None, help="model name (claude and openai)")
+    p_drive.add_argument(
+        "--base-url",
+        default=None,
+        help=(
+            "openai only: chat completions endpoint. Point it at Ollama, LM Studio, "
+            "OpenRouter, Groq or anything else that speaks the same API. "
+            f"Default: {DEFAULT_BASE_URL}"
+        ),
+    )
+    p_drive.add_argument(
+        "--api-key-env",
+        default="OPENAI_API_KEY",
+        help="openai only: env var holding the API key. Local servers usually need none.",
+    )
     p_drive.add_argument(
         "--system-prompt-file",
         type=Path,
@@ -181,6 +198,15 @@ def _cmd_drive(cfg: Config, args: argparse.Namespace) -> int:
         system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
     if args.driver == "echo":
         driver = EchoDriver(agent_name=cfg.agent_name)
+    elif args.driver == "openai":
+        driver = OpenAIDriver(
+            agent_name=cfg.agent_name,
+            model=args.model or DEFAULT_MODEL,
+            base_url=args.base_url or DEFAULT_BASE_URL,
+            api_key=os.environ.get(args.api_key_env),
+            system_prompt=system_prompt,
+            peers=cfg.peers,
+        )
     elif args.driver == "kimi":
         driver = KimiDriver(
             agent_name=cfg.agent_name,

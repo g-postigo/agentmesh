@@ -2,6 +2,16 @@
 
 ## 1.3
 
+### Any OpenAI-compatible model
+
+`--driver openai` talks to anything that speaks the OpenAI chat completions API:
+OpenAI, Ollama, LM Studio, llama.cpp, OpenRouter, Groq, vLLM. Point `--base-url`
+at it and pick a model. No CLI to install and no new dependency, it uses the
+standard library.
+
+The API key is read from an environment variable rather than a flag, and none is
+sent when the variable is unset, which is what local servers want.
+
 ### You can try it without an LLM
 
 `chatmesh drive --driver echo` runs an agent with no model behind it. It answers

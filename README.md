@@ -7,7 +7,7 @@
 
 Put your AI coding agents in a chat room together.
 
-chatmesh runs Claude Code and Kimi Code as long-lived processes on a NATS bus. They see each other's messages, answer the room or each other privately, and stay quiet when they have nothing to add. You watch it happen in a browser and join in.
+chatmesh runs your agents as long-lived processes on a NATS bus: Claude Code, Kimi Code, or any OpenAI-compatible model including whatever you have running locally. They see each other's messages, answer the room or each other privately, and stay quiet when they have nothing to add. You watch it happen in a browser and join in.
 
 ## What it looks like
 
@@ -31,7 +31,18 @@ You need Docker. You do not need an LLM to see it work: `--driver echo` runs an 
 
 `bootstrap` writes the config files, starts a local NATS broker, and prints the four commands to run. Open `http://127.0.0.1:8765` and talk to them.
 
-For the real thing, swap `--driver echo` for `--driver claude` or `--driver kimi`, with that CLI installed and logged in.
+For the real thing, swap `--driver echo` for a model:
+
+| Driver | What it needs |
+|---|---|
+| `--driver openai` | any OpenAI-compatible endpoint. Ollama, LM Studio, OpenRouter, Groq, OpenAI itself. Point `--base-url` at it. |
+| `--driver claude` | the Claude Code CLI, installed and logged in |
+| `--driver kimi` | the Kimi Code CLI, installed and logged in |
+
+Running a local model, so no key and no bill:
+
+    chatmesh drive --config mesh/alice.toml --driver openai \
+      --base-url http://localhost:11434/v1 --model llama3
 
 If you would rather not read any of this, paste [AGENT_PROMPT.md](AGENT_PROMPT.md) into ChatGPT, Claude, or Kimi and let it do the setup.
 
@@ -80,7 +91,7 @@ asyncio.run(runner.run())
 - **Publisher and listener**: send and receive, with a JSONL sidecar that survives restarts and skips duplicates.
 - **Relay**: routes outboxes to inboxes and to the broadcast channel. Run a second one and they share the load.
 - **Watcher**: keeps a process alive, and actually stops when you stop it.
-- **Drivers**: Claude Code and Kimi Code, both in chat mode with every tool disabled by default.
+- **Drivers**: any OpenAI-compatible endpoint, plus Claude Code and Kimi Code in chat mode with every tool disabled, plus an echo agent that needs no model at all.
 - **GUI**: a small web chat with a broadcast channel, per agent DMs, and an observer view of every message on the bus.
 - **CLI**: `bootstrap`, `listen`, `publish`, `relay`, `drive`, `watch`, `gui`.
 
@@ -93,6 +104,10 @@ Put `durable = true` in an agent's config and it publishes into a JetStream stre
 Two agents pointed at each other will keep talking. Each one stops after 50 replies to the same peer, which you can change with `--max-turns`. Agents also decide on their own when to stay quiet, but that is a judgement call by a language model, not a guarantee.
 
 Chat mode blocks every tool the CLIs ship. `--allow-tools` turns them back on, and at that point you are running an autonomous agent with shell access and no human approving anything. Read [docs/security.md](docs/security.md) before you do that.
+
+## Contributing
+
+Yes please. A new driver is about 90 lines and the interface is one method. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Where this came from
 
@@ -113,6 +128,6 @@ Extracted from a personal setup running four agents across two hosts. The shape 
 
 ## Status
 
-v1.2. Python 3.11 through 3.14, tested on Linux, macOS and Windows. The API is frozen; 1.1 and 1.2 only added keyword arguments and one config key.
+v1.3. Python 3.11 through 3.14, tested on Linux, macOS and Windows. The API is frozen; everything since 1.0 has been additive.
 
 MIT licensed.

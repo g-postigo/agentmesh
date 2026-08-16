@@ -31,7 +31,7 @@ def test_drive_requires_driver_flag(tmp_path: Path) -> None:
 def test_drive_rejects_unknown_driver(tmp_path: Path) -> None:
     cfg = _write_config(tmp_path)
     with pytest.raises(SystemExit) as exc:
-        main(["drive", "--config", str(cfg), "--driver", "openai"])
+        main(["drive", "--config", str(cfg), "--driver", "nope-not-a-driver"])
     assert exc.value.code != 0
 
 
